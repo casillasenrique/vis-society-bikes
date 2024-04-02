@@ -4,6 +4,7 @@
   import mapboxgl from 'mapbox-gl';
   import '../../node_modules/mapbox-gl/dist/mapbox-gl.css';
   import { onMount } from 'svelte';
+  import * as d3 from 'd3';
 
   mapboxgl.accessToken =
     'pk.eyJ1IjoiY2FzaWxsYXNlbnJpcXVlIiwiYSI6ImNrdzFxMW8ybmF2enIydXExb29yeDJ6NHkifQ.D6_IaYDb3vhMEIrPHoCoAA';
@@ -15,8 +16,25 @@
   };
 
   let mapContainer;
+  let map;
+  let stations = [];
+
+  function getCenters(stations) {
+    let centers = new Map();
+
+    if (map) {
+      for (let station of stations) {
+        let point = new mapboxgl.LngLat(+station.Long, +station.Lat);
+        let { x, y } = map.project(point);
+        centers.set(station, { cx: x, cy: y });
+      }
+    }
+
+    return centers;
+  }
+
   onMount(async () => {
-    const map = new mapboxgl.Map({
+    map = new mapboxgl.Map({
       container: mapContainer,
       center: [-71.09176402733907, 42.35982366492363],
       zoom: 12,
@@ -35,29 +53,49 @@
     });
 
     map.addLayer({
-      id: 'boston-bike-routes', 
+      id: 'boston-bike-routes',
       type: 'line',
-      source: 'boston-bike-routes', 
+      source: 'boston-bike-routes',
       paint: bikeLanesPaint,
     });
 
     map.addLayer({
-      id: 'cambridge-bike-routes', 
+      id: 'cambridge-bike-routes',
       type: 'line',
-      source: 'cambridge-bike-routes', 
+      source: 'cambridge-bike-routes',
       paint: bikeLanesPaint,
     });
+
+    stations = await d3.csv('https://vis-society.github.io/labs/8/data/bluebikes-stations.csv');
+    console.log(stations[0]);
   });
+
+  $: stationCoords = getCenters(stations);
+  $: map?.on('move', (evt) => (stationCoords = getCenters(stations)));
 </script>
 
 <h1>BlueBikes in Boston and Cambridge</h1>
 <h2>Visualizing bikeshare traffic</h2>
 
-<div id="map" bind:this={mapContainer}></div>
+<div id="map" bind:this={mapContainer}>
+  <svg>
+    {#each stations as station}
+      <circle {...stationCoords.get(station)} r="5" fill="steelblue" />
+    {/each}
+  </svg>
+</div>
 
 <style>
   #map {
     flex: 1;
     background-color: #7bec66;
+
+    svg {
+      position: absolute;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
   }
 </style>
