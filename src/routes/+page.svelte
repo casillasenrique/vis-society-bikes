@@ -8,6 +8,12 @@
   mapboxgl.accessToken =
     'pk.eyJ1IjoiY2FzaWxsYXNlbnJpcXVlIiwiYSI6ImNrdzFxMW8ybmF2enIydXExb29yeDJ6NHkifQ.D6_IaYDb3vhMEIrPHoCoAA';
 
+  const bikeLanesPaint = {
+    'line-color': '#7BEC66',
+    'line-width': 3,
+    'line-opacity': 0.8,
+  };
+
   let mapContainer;
   onMount(async () => {
     const map = new mapboxgl.Map({
@@ -23,13 +29,23 @@
       data: 'https://bostonopendata-boston.opendata.arcgis.com/datasets/boston::existing-bike-network-2022.geojson?outSR=%7B%22latestWkid%22%3A3857%2C%22wkid%22%3A102100%7D',
     });
 
+    map.addSource('cambridge-bike-routes', {
+      type: 'geojson',
+      data: 'https://raw.githubusercontent.com/cambridgegis/cambridgegis_data/main/Recreation/Bike_Facilities/RECREATION_BikeFacilities.geojson',
+    });
+
     map.addLayer({
-      id: 'boston-bike-routes', // A name for our layer (up to you)
-      type: "line",
-      source: 'boston-bike-routes', // The id we specified in `addSource()`
-      // paint: {
-      //   // paint params, e.g. colors, thickness, etc.
-      // },
+      id: 'boston-bike-routes', 
+      type: 'line',
+      source: 'boston-bike-routes', 
+      paint: bikeLanesPaint,
+    });
+
+    map.addLayer({
+      id: 'cambridge-bike-routes', 
+      type: 'line',
+      source: 'cambridge-bike-routes', 
+      paint: bikeLanesPaint,
     });
   });
 </script>
@@ -42,6 +58,6 @@
 <style>
   #map {
     flex: 1;
-    background-color: red;
+    background-color: #7bec66;
   }
 </style>
