@@ -18,6 +18,7 @@
   let mapContainer;
   let map;
   let stations = [];
+  let traffic = [];
 
   function getCenters(stations) {
     let centers = new Map();
@@ -33,7 +34,7 @@
     return centers;
   }
 
-  onMount(async () => {
+  async function createMap() {
     map = new mapboxgl.Map({
       container: mapContainer,
       center: [-71.09176402733907, 42.35982366492363],
@@ -66,12 +67,43 @@
       paint: bikeLanesPaint,
     });
 
-    stations = await d3.csv('https://vis-society.github.io/labs/8/data/bluebikes-stations.csv');
-    console.log(stations[0]);
+    [stations, traffic] = await Promise.all([
+      d3.csv('https://vis-society.github.io/labs/8/data/bluebikes-stations.csv'),
+      d3.csv('https://vis-society.github.io/labs/8/data/bluebikes-traffic-2024-03.csv'),
+    ]);
+    console.log("Stations:",stations[0]);
+    console.log("Traffic:",traffic[0]);
+
+    const arrivals = d3.rollup(
+      traffic,
+      (v) => v.length,
+      (d) => d.end_station_id
+    );
+    const departures = d3.rollup(
+      traffic,
+      (v) => v.length,
+      (d) => d.start_station_id
+    );
+
+
+    stations = stations.map((station) => {
+      const numArrivals = arrivals.get(station.Number), numDepartures = departures.get(station.Number);
+      const totalTraffic = numDepartures + numArrivals;
+      return {...station, numArrivals, numDepartures, totalTraffic}      
+    })
+    console.log(stations);
+  }
+
+  onMount(() => {
+    createMap()
   });
 
   $: stationCoords = getCenters(stations);
   $: map?.on('move', (evt) => (stationCoords = getCenters(stations)));
+  $: radiusScale = d3.scaleSqrt()
+	.domain(d3.extent(stations, d => d.totalTraffic))
+	.range([1, 26]);
+
 </script>
 
 <h1>BlueBikes in Boston and Cambridge</h1>
@@ -80,7 +112,7 @@
 <div id="map" bind:this={mapContainer}>
   <svg>
     {#each stations as station}
-      <circle {...stationCoords.get(station)} r="5" fill="steelblue" />
+      <circle {...stationCoords.get(station)} r={radiusScale(station.totalTraffic)} fill="steelblue" />
     {/each}
   </svg>
 </div>
@@ -96,6 +128,11 @@
       width: 100%;
       height: 100%;
       pointer-events: none;
+
+      circle {
+        fill-opacity: 40%;
+        stroke-opacity: 70%
+      }
     }
   }
 </style>
