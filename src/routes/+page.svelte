@@ -159,6 +159,11 @@
           station.totalTraffic = station.arrivals + station.departures;
           return station;
         });
+
+  /**
+   * STEP 6
+   */
+  let stationFlow = d3.scaleQuantize().domain([0, 1]).range([0, 0.5, 1]);
 </script>
 
 <header>
@@ -178,7 +183,12 @@
   <svg>
     {#key mapViewChanged}
       {#each filteredStations as station}
-        <circle {...getCoords(station)} r={radiusScale(station.totalTraffic)} fill="steelblue">
+        <circle
+          {...getCoords(station)}
+          r={radiusScale(station.totalTraffic)}
+          fill="steelblue"
+          style="--departure-ratio: {stationFlow(station.totalTraffic === 0 ? 0 : station.departures / station.totalTraffic)}"
+        >
           <title
             >{station.totalTraffic} trips ({station.departures} departures, {station.arrivals} arrivals)</title
           >
@@ -186,6 +196,12 @@
       {/each}
     {/key}
   </svg>
+</div>
+
+<div class="legend">
+  <div style="--departure-ratio: 1">More departures</div>
+  <div style="--departure-ratio: 0.5">Balanced</div>
+  <div style="--departure-ratio: 0">More arrivals</div>
 </div>
 
 <style>
@@ -204,9 +220,44 @@
         fill-opacity: 40%;
         stroke-opacity: 70%;
         pointer-events: auto;
+
+        fill: var(--color);
       }
     }
   }
+
+  .legend > div,
+  circle {
+    --color-departures: steelblue;
+    --color-arrivals: darkorange;
+    --color: color-mix(
+      in oklch,
+      var(--color-departures) calc(100% * var(--departure-ratio)),
+      var(--color-arrivals)
+    );
+  }
+
+  .legend {
+    display: flex;
+    gap: 1px;
+    div {
+      flex: 1;
+      background-color: var(--color);
+      padding: 0.1rem 1rem;
+
+      color: white;
+      font-weight: bold;
+      font-size: small;
+      &:nth-child(2) {
+        text-align: center;
+      }
+      &:nth-child(3) {
+        text-align: right;
+      }
+    }
+
+  }
+
 
   header {
     display: flex;
