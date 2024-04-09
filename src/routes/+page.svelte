@@ -27,9 +27,9 @@
     let { x, y } = map.project(point);
     return { cx: x, cy: y };
   }
-  
+
   function minutesSinceMidnight(date) {
-	  return date.getHours() * 60 + date.getMinutes();
+    return date.getHours() * 60 + date.getMinutes();
   }
 
   async function createMap() {
@@ -37,7 +37,7 @@
       container: mapContainer,
       center: [-71.09176402733907, 42.35982366492363],
       zoom: 12,
-      style: 'mapbox://styles/casillasenrique/clukyyerk007v01pb6r107k1o'
+      style: 'mapbox://styles/casillasenrique/clukyyerk007v01pb6r107k1o',
     });
 
     await new Promise((resolve) => map.on('load', resolve));
@@ -66,90 +66,122 @@
       paint: bikeLanesPaint,
     });
 
-    stations = await d3.csv('https://vis-society.github.io/labs/8/data/bluebikes-stations.csv')
-    trips = await d3.csv('https://vis-society.github.io/labs/8/data/bluebikes-traffic-2024-03.csv').then((trips) => {
-      for (let trip of trips) {
-        // Convert trip start/end times to dates
-        trip.started_at = new Date(trip.started_at)
-        trip.ended_at = new Date(trip.ended_at)
-      }
-      return trips;
+    stations = await d3.csv('https://vis-society.github.io/labs/8/data/bluebikes-stations.csv');
+    trips = await d3
+      .csv('https://vis-society.github.io/labs/8/data/bluebikes-traffic-2024-03.csv')
+      .then((trips) => {
+        for (let trip of trips) {
+          // Convert trip start/end times to dates
+          trip.started_at = new Date(trip.started_at);
+          trip.ended_at = new Date(trip.ended_at);
+        }
+        return trips;
+      });
+
+    departures = d3.rollup(
+      trips,
+      (v) => v.length,
+      (d) => d.start_station_id
+    );
+    arrivals = d3.rollup(
+      trips,
+      (v) => v.length,
+      (d) => d.end_station_id
+    );
+
+    stations = stations.map((station) => {
+      let id = station.Number;
+      station.arrivals = arrivals.get(id) ?? 0;
+      station.departures = departures.get(id) ?? 0;
+      station.totalTraffic = station.departures + station.arrivals;
+      return station;
     });
 
-    departures = d3.rollup(trips, v => v.length, d => d.start_station_id);
-    arrivals = d3.rollup(trips, v => v.length, d => d.end_station_id);
-
-    stations = stations.map(station => {
-	    let id = station.Number;
-	    station.arrivals = arrivals.get(id) ?? 0;
-	    station.departures = departures.get(id) ?? 0;
-      station.totalTraffic = station.departures + station.arrivals
-	    return station;
-    });
-
-
-    console.log("Stations:",stations[0]);
-    console.log("Traffic:",trips[0]);
+    console.log('Stations:', stations[0]);
+    console.log('Traffic:', trips[0]);
   }
-  
-  
+
   onMount(() => {
-    createMap()
+    createMap();
   });
-  
+
   let mapViewChanged = 0;
-  
-  $: map?.on("move", e => mapViewChanged++);
-  $: radiusScale = d3.scaleSqrt()
-	.domain([0, d3.max(stations, d => d.totalTraffic)])
-	.range(timeFilter === -1? [0, 25] : [3, 50]);
-  
+
+  $: map?.on('move', (e) => mapViewChanged++);
+  $: radiusScale = d3
+    .scaleSqrt()
+    .domain([0, d3.max(stations, (d) => d.totalTraffic)])
+    .range(timeFilter === -1 ? [0, 25] : [3, 50]);
+
   let timeFilter = -1;
-  $: timeFilterLabel = new Date(0, 0, 0, 0, timeFilter)
-  .toLocaleString("en", {timeStyle: "short"});
-  
+  $: timeFilterLabel = new Date(0, 0, 0, 0, timeFilter).toLocaleString('en', {
+    timeStyle: 'short',
+  });
+
   let filteredStations = [];
 
-  $: filteredTrips = timeFilter === -1? trips : trips.filter(trip => {
-	  let startedMinutes = minutesSinceMidnight(trip.started_at);
-	  let endedMinutes = minutesSinceMidnight(trip.ended_at);
-	  return Math.abs(startedMinutes - timeFilter) <= 60
-	       || Math.abs(endedMinutes - timeFilter) <= 60;
-  });
+  $: filteredTrips =
+    timeFilter === -1
+      ? trips
+      : trips.filter((trip) => {
+          let startedMinutes = minutesSinceMidnight(trip.started_at);
+          let endedMinutes = minutesSinceMidnight(trip.ended_at);
+          return (
+            Math.abs(startedMinutes - timeFilter) <= 60 || Math.abs(endedMinutes - timeFilter) <= 60
+          );
+        });
 
-  $: filteredDepartures = timeFilter === -1? departures
-	: d3.rollup(filteredTrips, v => v.length, d => d.start_station_id);
-  $: filteredArrivals = timeFilter === -1? arrivals : d3.rollup(filteredTrips, v => v.length, d => d.end_station_id);
+  $: filteredDepartures =
+    timeFilter === -1
+      ? departures
+      : d3.rollup(
+          filteredTrips,
+          (v) => v.length,
+          (d) => d.start_station_id
+        );
+  $: filteredArrivals =
+    timeFilter === -1
+      ? arrivals
+      : d3.rollup(
+          filteredTrips,
+          (v) => v.length,
+          (d) => d.end_station_id
+        );
 
-  $: filteredStations = timeFilter === -1 ? stations : stations.map(station => {
-	station = {...station};
-	let id = station.Number;
-	station.arrivals = filteredArrivals.get(id) ?? 0;
-	station.departures = filteredDepartures.get(id) ?? 0;
-	station.totalTraffic = station.arrivals + station.departures;
-	return station;
-});
+  $: filteredStations =
+    timeFilter === -1
+      ? stations
+      : stations.map((station) => {
+          station = { ...station };
+          let id = station.Number;
+          station.arrivals = filteredArrivals.get(id) ?? 0;
+          station.departures = filteredDepartures.get(id) ?? 0;
+          station.totalTraffic = station.arrivals + station.departures;
+          return station;
+        });
 </script>
 
 <header>
-	<h1>🚴🏼‍♀️ Bikewatching</h1>
-	<label>
-		Filter by time:
-		<input type="range" min="-1" max="1439" bind:value={timeFilter}>
-		{#if timeFilter === -1 }
-		<em>(any time)</em>
-		{:else }
-		<time>{timeFilterLabel}</time>
-		{/if}
-	</label>
+  <h1>🚴🏼‍♀️ Bikewatching</h1>
+  <label>
+    Filter by time:
+    <input type="range" min="-1" max="1439" bind:value={timeFilter} />
+    {#if timeFilter === -1}
+      <em>(any time)</em>
+    {:else}
+      <time>{timeFilterLabel}</time>
+    {/if}
+  </label>
 </header>
-  
+
 <div id="map" bind:this={mapContainer}>
   <svg>
     {#key mapViewChanged}
       {#each filteredStations as station}
-        <circle {...getCoords(station)} r={radiusScale(station.totalTraffic)} fill="steelblue" >
-        	<title>{station.totalTraffic} trips ({station.departures} departures, { station.arrivals} arrivals)</title>
+        <circle {...getCoords(station)} r={radiusScale(station.totalTraffic)} fill="steelblue">
+          <title
+            >{station.totalTraffic} trips ({station.departures} departures, {station.arrivals} arrivals)</title
+          >
         </circle>
       {/each}
     {/key}
@@ -174,30 +206,30 @@
         pointer-events: auto;
       }
     }
-
   }
 
   header {
-	display: flex;
-	gap: 1em;
-	align-items: baseline;
-	margin-bottom: 1em;
+    display: flex;
+    gap: 1em;
+    align-items: baseline;
+    margin-bottom: 1em;
 
-	label {
-		margin-left: auto;
+    label {
+      margin-left: auto;
 
-		input {
-			width: 30em;
-		}
+      input {
+        width: 30em;
+      }
 
-		em, time {
-			display: block;
-			text-align: right;
-		}
+      em,
+      time {
+        display: block;
+        text-align: right;
+      }
 
-		em {
-			opacity: .6;
-		}
-	}
-}
+      em {
+        opacity: 0.6;
+      }
+    }
+  }
 </style>
