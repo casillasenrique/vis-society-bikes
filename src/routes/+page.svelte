@@ -18,20 +18,18 @@
   let mapContainer;
   let map;
   let stations = [];
-  let traffic = [];
+  let trips = [];
+  let departures = [];
+  let arrivals = [];
 
-  function getCenters(stations) {
-    let centers = new Map();
-
-    if (map) {
-      for (let station of stations) {
-        let point = new mapboxgl.LngLat(+station.Long, +station.Lat);
-        let { x, y } = map.project(point);
-        centers.set(station, { cx: x, cy: y });
-      }
-    }
-
-    return centers;
+  function getCoords(station) {
+    let point = new mapboxgl.LngLat(+station.Long, +station.Lat);
+    let { x, y } = map.project(point);
+    return { cx: x, cy: y };
+  }
+  
+  function minutesSinceMidnight(date) {
+	  return date.getHours() * 60 + date.getMinutes();
   }
 
   async function createMap() {
@@ -67,53 +65,83 @@
       paint: bikeLanesPaint,
     });
 
-    [stations, traffic] = await Promise.all([
-      d3.csv('https://vis-society.github.io/labs/8/data/bluebikes-stations.csv'),
-      d3.csv('https://vis-society.github.io/labs/8/data/bluebikes-traffic-2024-03.csv'),
-    ]);
+    stations = await d3.csv('https://vis-society.github.io/labs/8/data/bluebikes-stations.csv')
+    trips = await d3.csv('https://vis-society.github.io/labs/8/data/bluebikes-traffic-2024-03.csv').then((trips) => {
+      for (let trip of trips) {
+        // Convert trip start/end times to dates
+        trip.started_at = new Date(trips.started_at)
+        trip.ended_at = new Date(trips.ended_at)
+      }
+      return trips;
+    });
+
+    departures = d3.rollup(trips, v => v.length, d => d.start_station_id);
+    arrivals = d3.rollup(trips, v => v.length, d => d.end_station_id);
+
+    stations = stations.map(station => {
+	    let id = station.Number;
+	    station.arrivals = arrivals.get(id) ?? 0;
+	    station.departures = departures.get(id) ?? 0;
+      station.totalTraffic = station.departures + station.arrivals
+	    return station;
+    });
+
+
     console.log("Stations:",stations[0]);
-    console.log("Traffic:",traffic[0]);
-
-    const arrivals = d3.rollup(
-      traffic,
-      (v) => v.length,
-      (d) => d.end_station_id
-    );
-    const departures = d3.rollup(
-      traffic,
-      (v) => v.length,
-      (d) => d.start_station_id
-    );
-
-
-    stations = stations.map((station) => {
-      const numArrivals = arrivals.get(station.Number), numDepartures = departures.get(station.Number);
-      const totalTraffic = numDepartures + numArrivals;
-      return {...station, numArrivals, numDepartures, totalTraffic}      
-    })
-    console.log(stations);
+    console.log("Traffic:",trips[0]);
   }
-
+  
+  
   onMount(() => {
     createMap()
   });
-
-  $: stationCoords = getCenters(stations);
-  $: map?.on('move', (evt) => (stationCoords = getCenters(stations)));
+  
+  let mapViewChanged = 0;
+  
+  $: map?.on("move", e => mapViewChanged++);
   $: radiusScale = d3.scaleSqrt()
-	.domain(d3.extent(stations, d => d.totalTraffic))
-	.range([1, 26]);
+	.domain([0, d3.max(stations, d => d.totalTraffic)])
+	.range([1, 25]);
+  
+  let timeFilter = -1;
+  $: timeFilterLabel = new Date(0, 0, 0, 0, timeFilter)
+  .toLocaleString("en", {timeStyle: "short"});
+  
+  let filteredStations = [];
+
+  $: filteredTrips = timeFilter === -1? trips : trips.filter(trip => {
+	  let startedMinutes = minutesSinceMidnight(trip.started_at);
+	  let endedMinutes = minutesSinceMidnight(trip.ended_at);
+	  return Math.abs(startedMinutes - timeFilter) <= 60
+	       || Math.abs(endedMinutes - timeFilter) <= 60;
+  });
+
+
 
 </script>
 
-<h1>BlueBikes in Boston and Cambridge</h1>
-<h2>Visualizing bikeshare traffic</h2>
-
+<header>
+	<h1>🚴🏼‍♀️ Bikewatching</h1>
+	<label>
+		Filter by time:
+		<input type="range" min="-1" max="1439" bind:value={timeFilter}>
+		{#if timeFilter === -1 }
+		<em>(any time)</em>
+		{:else }
+		<time>{timeFilterLabel}</time>
+		{/if}
+	</label>
+</header>
+  
 <div id="map" bind:this={mapContainer}>
   <svg>
-    {#each stations as station}
-      <circle {...stationCoords.get(station)} r={radiusScale(station.totalTraffic)} fill="steelblue" />
-    {/each}
+    {#key mapViewChanged}
+      {#each stations as station}
+        <circle {...getCoords(station)} r={radiusScale(station.totalTraffic)} fill="steelblue" >
+        	<title>{station.totalTraffic} trips ({station.departures} departures, { station.arrivals} arrivals)</title>
+        </circle>
+      {/each}
+    {/key}
   </svg>
 </div>
 
@@ -131,8 +159,34 @@
 
       circle {
         fill-opacity: 40%;
-        stroke-opacity: 70%
+        stroke-opacity: 70%;
+        pointer-events: auto;
       }
     }
+
   }
+
+  header {
+	display: flex;
+	gap: 1em;
+	align-items: baseline;
+	margin-bottom: 1em;
+
+	label {
+		margin-left: auto;
+
+		input {
+			width: 30em;
+		}
+
+		em, time {
+			display: block;
+			text-align: right;
+		}
+
+		em {
+			opacity: .6;
+		}
+	}
+}
 </style>
