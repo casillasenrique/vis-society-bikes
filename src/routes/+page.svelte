@@ -37,6 +37,7 @@
       container: mapContainer,
       center: [-71.09176402733907, 42.35982366492363],
       zoom: 12,
+      style: 'mapbox://styles/casillasenrique/clukyyerk007v01pb6r107k1o'
     });
 
     await new Promise((resolve) => map.on('load', resolve));
@@ -69,8 +70,8 @@
     trips = await d3.csv('https://vis-society.github.io/labs/8/data/bluebikes-traffic-2024-03.csv').then((trips) => {
       for (let trip of trips) {
         // Convert trip start/end times to dates
-        trip.started_at = new Date(trips.started_at)
-        trip.ended_at = new Date(trips.ended_at)
+        trip.started_at = new Date(trip.started_at)
+        trip.ended_at = new Date(trip.ended_at)
       }
       return trips;
     });
@@ -101,7 +102,7 @@
   $: map?.on("move", e => mapViewChanged++);
   $: radiusScale = d3.scaleSqrt()
 	.domain([0, d3.max(stations, d => d.totalTraffic)])
-	.range([1, 25]);
+	.range(timeFilter === -1? [0, 25] : [3, 50]);
   
   let timeFilter = -1;
   $: timeFilterLabel = new Date(0, 0, 0, 0, timeFilter)
@@ -116,8 +117,18 @@
 	       || Math.abs(endedMinutes - timeFilter) <= 60;
   });
 
+  $: filteredDepartures = timeFilter === -1? departures
+	: d3.rollup(filteredTrips, v => v.length, d => d.start_station_id);
+  $: filteredArrivals = timeFilter === -1? arrivals : d3.rollup(filteredTrips, v => v.length, d => d.end_station_id);
 
-
+  $: filteredStations = timeFilter === -1 ? stations : stations.map(station => {
+	station = {...station};
+	let id = station.Number;
+	station.arrivals = filteredArrivals.get(id) ?? 0;
+	station.departures = filteredDepartures.get(id) ?? 0;
+	station.totalTraffic = station.arrivals + station.departures;
+	return station;
+});
 </script>
 
 <header>
@@ -136,7 +147,7 @@
 <div id="map" bind:this={mapContainer}>
   <svg>
     {#key mapViewChanged}
-      {#each stations as station}
+      {#each filteredStations as station}
         <circle {...getCoords(station)} r={radiusScale(station.totalTraffic)} fill="steelblue" >
         	<title>{station.totalTraffic} trips ({station.departures} departures, { station.arrivals} arrivals)</title>
         </circle>
